@@ -23,6 +23,7 @@ PROGMEM const char usbHidReportDescriptor[USB_CFG_HID_REPORT_DESCRIPTOR_LENGTH] 
   0x75, 0x01,                    //   REPORT_SIZE (1)
   0x95, 0x08,                    //   REPORT_COUNT (8)
   0x81, 0x02,                    //   INPUT (Data,Var,Abs)
+  0x85, 0x01,                    //   REPORT_ID (1)
   0x95, BUFFER_SIZE - 1,         //   REPORT_COUNT (simultaneous keystrokes)
   0x75, 0x08,                    //   REPORT_SIZE (8)
   0x25, 0x65,                    //   LOGICAL_MAXIMUM (101)
@@ -54,14 +55,15 @@ usbMsgLen_t usbFunctionSetup(uchar data[8]) {
     lastReq = rq->bRequest;
     if (rq->bRequest == USBRQ_HID_GET_REPORT) {  /* wValue: ReportType (highbyte), ReportID (lowbyte) */
       /* we only have one report type, so don't look at wValue */
-      usbMsgPtr = (void *)&reportBuffer;
+      usbMsgPtr = (void *)&reportBuffer[0];
       return sizeof(reportBuffer);
     } else if (rq->bRequest == USBRQ_HID_GET_IDLE) {
       return 0;
     } else if (rq->bRequest == USBRQ_HID_SET_IDLE) {
       idleRate = rq->wValue.bytes[1];
     } else if (rq->bRequest == USBRQ_HID_SET_REPORT) {
-      return rq->wLength.word == 1 ? USB_NO_MSG : 0;
+      // The first byte is report id (we only accept 0x01)
+      return rq->wLength.word == 2 ? USB_NO_MSG : 0;
     }
   } else {
     /* no vendor specific requests implemented */
@@ -70,12 +72,13 @@ usbMsgLen_t usbFunctionSetup(uchar data[8]) {
 }
 
 usbMsgLen_t usbFunctionWrite(uchar *data, uchar len) {
-  if (lastReq == USBRQ_HID_SET_REPORT) {
+  if (lastReq == USBRQ_HID_SET_REPORT && data[0] == 0x01) {
+    // (Only accept report ID 0x01 because we have multiple endpoints)
     // The LED state
     // Num Lock
-    digitalWrite(12, CHECK_BIT(data[0], 0));
+    digitalWrite(12, CHECK_BIT(data[1], 0));
     // Caps Lock
-    digitalWrite(13, CHECK_BIT(data[0], 1));
+    digitalWrite(13, CHECK_BIT(data[1], 1));
   }
   return 1;
 }
@@ -126,14 +129,15 @@ void scan() {
 // TODO: implement multiple report buffers
 void fillReportBuffer() {
   memset(reportBuffer, 0, sizeof(reportBuffer));
+  reportBuffer[0] = 0x01;
   uint8_t startNum = 0;
-  uint8_t maxNum = startNum + 6;
+  uint8_t maxNum = startNum + 5;
   if (startNum >= pressedNum)
     return;
   if (maxNum > pressedNum)
     maxNum = pressedNum;
   for (uint8_t i = startNum; i < maxNum; i++) {
-    reportBuffer[i - startNum + 2] = pressedKeys[i];
+    reportBuffer[i - startNum + 3] = pressedKeys[i];
   }
 }
 
