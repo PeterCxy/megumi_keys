@@ -1,0 +1,4 @@
+build-*
+fp-info-cache
+keyboard-cache.lib
+*.*-bak
