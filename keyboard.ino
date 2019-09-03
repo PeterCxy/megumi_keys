@@ -21,6 +21,7 @@ typedef struct __attribute__((__packed__)) {
 #define BUFFER_SIZE sizeof(kbReport)
 
 PROGMEM const char usbHidReportDescriptor[USB_CFG_HID_REPORT_DESCRIPTOR_LENGTH] = { /* USB report descriptor */
+  // REPORT 1
   0x05, 0x01,                    // USAGE_PAGE (Generic Desktop)
   0x09, 0x06,                    // USAGE (Keyboard)
   0xa1, 0x01,                    // COLLECTION (Application)
@@ -48,10 +49,10 @@ PROGMEM const char usbHidReportDescriptor[USB_CFG_HID_REPORT_DESCRIPTOR_LENGTH] 
   0x95, 0x01,                    //   REPORT_COUNT (1)
   0x75, 0x03,                    //   REPORT_SIZE (3)
   0x91, 0x03,                    //   OUTPUT (Cnst,Var,Abs)
-  0xc0                           // END_COLLECTION
+  0xc0,                           // END_COLLECTION
 };
 
-static kbReport reportBuffer;
+static kbReport reportBuffer[USB_CFG_HID_REPORT_ID_NUM];
 static uchar idleRate;
 static uchar lastReq;
 usbMsgLen_t usbFunctionSetup(uchar data[8]) {
@@ -63,9 +64,8 @@ usbMsgLen_t usbFunctionSetup(uchar data[8]) {
   if ((rq->bmRequestType & USBRQ_TYPE_MASK) == USBRQ_TYPE_CLASS) {
     lastReq = rq->bRequest;
     if (rq->bRequest == USBRQ_HID_GET_REPORT) {  /* wValue: ReportType (highbyte), ReportID (lowbyte) */
-      /* we only have one report type, so don't look at wValue */
-      usbMsgPtr = (void *) &reportBuffer;
-      return sizeof(reportBuffer);
+      usbMsgPtr = (void *) &reportBuffer[rq->wValue.bytes[0]];
+      return BUFFER_SIZE;
     } else if (rq->bRequest == USBRQ_HID_GET_IDLE) {
       return 0;
     } else if (rq->bRequest == USBRQ_HID_SET_IDLE) {
@@ -135,18 +135,20 @@ void scan() {
     scanRow(i);
 }
 
-// TODO: implement multiple report buffers
 void fillReportBuffer() {
-  memset((void *) &reportBuffer, 0, sizeof(reportBuffer));
-  reportBuffer.reportId = 0x01;
-  uint8_t startNum = 0;
-  uint8_t maxNum = startNum + 5;
-  if (startNum >= pressedNum)
-    return;
-  if (maxNum > pressedNum)
-    maxNum = pressedNum;
-  for (uint8_t i = startNum; i < maxNum; i++) {
-    reportBuffer.keycodes[i - startNum] = pressedKeys[i];
+  memset((void *) &reportBuffer[0], 0, BUFFER_SIZE * USB_CFG_HID_REPORT_ID_NUM);
+  uint8_t startNum, maxNum = 0;
+  for (uint8_t i = 0; i < USB_CFG_HID_REPORT_ID_NUM; i++) {
+    reportBuffer[i].reportId = i + 1;
+    startNum = maxNum;
+    maxNum = startNum + KEY_CODE_PER_REPORT;
+    if (startNum >= pressedNum)
+      return;
+    if (maxNum > pressedNum)
+      maxNum = pressedNum;
+    for (uint8_t j = startNum; j < maxNum; j++) {
+      reportBuffer[i].keycodes[j - startNum] = pressedKeys[j];
+    }
   }
 }
 
@@ -172,6 +174,9 @@ void loop() {
     // Always scan the entire keyboard when interrupt is ready
     scan();
     fillReportBuffer();
-    usbSetInterrupt((void *) &reportBuffer, sizeof(reportBuffer));
+    for (int i = 0; i < USB_CFG_HID_REPORT_ID_NUM; i++) {
+      while (!usbInterruptIsReady()) usbPoll();
+      usbSetInterrupt((void *) &reportBuffer[i], BUFFER_SIZE);
+    }
   }
 }
