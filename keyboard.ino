@@ -8,8 +8,17 @@ extern "C" {
 #include "usbdrv/oddebug.h"
 }
 
-#define BUFFER_SIZE 8
+#define KEY_CODE_PER_REPORT 5
 #define CHECK_BIT(var, pos) ((var) & (1 << (pos)))
+
+typedef struct __attribute__((__packed__)) {
+  uint8_t reportId;
+  uint8_t modifiers;
+  uint8_t _unused;
+  uint8_t keycodes[KEY_CODE_PER_REPORT];
+} kbReport;
+
+#define BUFFER_SIZE sizeof(kbReport)
 
 PROGMEM const char usbHidReportDescriptor[USB_CFG_HID_REPORT_DESCRIPTOR_LENGTH] = { /* USB report descriptor */
   0x05, 0x01,                    // USAGE_PAGE (Generic Desktop)
@@ -42,7 +51,7 @@ PROGMEM const char usbHidReportDescriptor[USB_CFG_HID_REPORT_DESCRIPTOR_LENGTH] 
   0xc0                           // END_COLLECTION
 };
 
-static uchar reportBuffer[BUFFER_SIZE];
+static kbReport reportBuffer;
 static uchar idleRate;
 static uchar lastReq;
 usbMsgLen_t usbFunctionSetup(uchar data[8]) {
@@ -55,7 +64,7 @@ usbMsgLen_t usbFunctionSetup(uchar data[8]) {
     lastReq = rq->bRequest;
     if (rq->bRequest == USBRQ_HID_GET_REPORT) {  /* wValue: ReportType (highbyte), ReportID (lowbyte) */
       /* we only have one report type, so don't look at wValue */
-      usbMsgPtr = (void *)&reportBuffer[0];
+      usbMsgPtr = (void *) &reportBuffer;
       return sizeof(reportBuffer);
     } else if (rq->bRequest == USBRQ_HID_GET_IDLE) {
       return 0;
@@ -128,8 +137,8 @@ void scan() {
 
 // TODO: implement multiple report buffers
 void fillReportBuffer() {
-  memset(reportBuffer, 0, sizeof(reportBuffer));
-  reportBuffer[0] = 0x01;
+  memset((void *) &reportBuffer, 0, sizeof(reportBuffer));
+  reportBuffer.reportId = 0x01;
   uint8_t startNum = 0;
   uint8_t maxNum = startNum + 5;
   if (startNum >= pressedNum)
@@ -137,7 +146,7 @@ void fillReportBuffer() {
   if (maxNum > pressedNum)
     maxNum = pressedNum;
   for (uint8_t i = startNum; i < maxNum; i++) {
-    reportBuffer[i - startNum + 3] = pressedKeys[i];
+    reportBuffer.keycodes[i - startNum] = pressedKeys[i];
   }
 }
 
