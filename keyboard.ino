@@ -167,11 +167,11 @@ void setup() {
 }
 
 void loop() {
-    usbPoll();
-    if (usbInterruptIsReady()) {
-      // Always scan the entire keyboard when interrupt is ready
-      scan();
-      fillReportBuffer();
-      usbSetInterrupt((void *) &reportBuffer, sizeof(reportBuffer));
-    }
+  usbPoll();
+  if (usbInterruptIsReady()) {
+    // Always scan the entire keyboard when interrupt is ready
+    scan();
+    fillReportBuffer();
+    usbSetInterrupt((void *) &reportBuffer, sizeof(reportBuffer));
+  }
 }
