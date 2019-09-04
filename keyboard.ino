@@ -55,7 +55,7 @@ PROGMEM const char usbHidReportDescriptor[USB_CFG_HID_REPORT_DESCRIPTOR_LENGTH] 
   KEYBOARD_DESCRIPTOR(3),
 };
 
-static kbReport reportBuffer[USB_CFG_HID_REPORT_ID_NUM];
+static kbReport reportBuffer[USB_CFG_HID_REPORT_ID_NUM] = { { 0 } };
 static uchar idleRate;
 static uchar lastReq;
 usbMsgLen_t usbFunctionSetup(uchar data[8]) {
@@ -97,8 +97,7 @@ usbMsgLen_t usbFunctionWrite(uchar *data, uchar len) {
 
 const uint8_t rowPinMapping[NUM_ROW_SEL_PINS] = { 0, 1, 5, 6 };
 const uint8_t colPinMapping[NUM_COL_IN_PINS] = { 7, 8, 9, 10, 11, A0, A1, A2, A3, A4, A5 };
-uint8_t pressedKeys[NUM_ROWS * NUM_COL_IN_PINS];
-uint8_t pressedNum = 0;
+bool keyState[255]; // A simple-and-naive hashtable replacement
 
 // ROWs are output pins connected to 4-16 decoder
 void initRows() {
@@ -124,33 +123,71 @@ void scanRow(uint8_t row) {
   // Read from all input pins to determine which ones are pressed
   // loop over all cols
   for (uint8_t i = 0; i < NUM_COL_IN_PINS; i++) {
-    if (!digitalRead(colPinMapping[i])) {
-      // TODO: implement modifier keys
-      pressedKeys[pressedNum] = keymap[row][i];
-      pressedNum++;
-    }
+    // TODO: implement modifier keys
+    // Set key state while not overriding if it's already pressed
+    keyState[keymap[row][i]] |= !digitalRead(colPinMapping[i]);
   }
 }
 
 void scan() {
-  pressedNum = 0;
+  // Reset all keys
+  memset((void *) &keyState[0], 0, sizeof(keyState));
+  // Scan all rows
   for (uint8_t i = 0; i < NUM_ROWS; i++)
     scanRow(i);
 }
 
 void fillReportBuffer() {
-  memset((void *) &reportBuffer[0], 0, BUFFER_SIZE * USB_CFG_HID_REPORT_ID_NUM);
-  uint8_t startNum, maxNum = 0;
+  // Scan all previous reports and reset all keys that are not pressed anymore
+  // keep all the still pressed keys in the original report ID, to avoid confusing
+  // the host OS.
+  uint8_t emptySlots = 0;
   for (uint8_t i = 0; i < USB_CFG_HID_REPORT_ID_NUM; i++) {
-    reportBuffer[i].reportId = i + 1;
-    startNum = maxNum;
-    maxNum = startNum + KEY_CODE_PER_REPORT;
-    if (startNum >= pressedNum)
-      return;
-    if (maxNum > pressedNum)
-      maxNum = pressedNum;
-    for (uint8_t j = startNum; j < maxNum; j++) {
-      reportBuffer[i].keycodes[j - startNum] = pressedKeys[j];
+    uint8_t keycodes[KEY_CODE_PER_REPORT] = { 0 };
+    uint8_t curId = 0;
+    for (uint8_t kid = 0; kid < KEY_CODE_PER_REPORT; kid++) {
+      uint8_t kcode = reportBuffer[i].keycodes[kid];
+      // Append to the new array so we can remove any spaces between then
+      // USB HID report terminates when it sees a 0 in keycode sequence
+      if (kcode && keyState[kcode]) {
+        keycodes[curId] = kcode;
+        keyState[kcode] = false; // Don't add the key later because we already have it
+        curId++;
+      }
+    }
+    memcpy(reportBuffer[i].keycodes, keycodes, KEY_CODE_PER_REPORT);
+    emptySlots += KEY_CODE_PER_REPORT - curId;
+  }
+  
+  // Find the list of all pressed keys so we can fill them in empty "slots"
+  // in report IDs later
+  uint8_t pressedKeys[USB_CFG_HID_REPORT_ID_NUM * KEY_CODE_PER_REPORT] = { 0 };
+  uint8_t keyNum = 0;
+  for (uint8_t i = 0; i < sizeof(keyState); i++) {
+    if (!keyState[i]) continue;
+    pressedKeys[keyNum] = i;
+    keyNum++;
+    if (keyNum >= emptySlots) break;
+  }
+
+  if (keyNum == 0) return; // No new keys pressed
+
+  // Fill in the reports with newly pressed keys
+  uint8_t curKeyId = 0;
+  for (uint8_t i = 0; i < USB_CFG_HID_REPORT_ID_NUM; i++) {
+    uint8_t j = 0;
+    // Find the first empty slot
+    for (j = 0; j < KEY_CODE_PER_REPORT; j++) {
+      if (!reportBuffer[i].keycodes[j]) break;
+    }
+    
+    if (j == KEY_CODE_PER_REPORT) continue; // no empty slots in this report id
+
+    // Fill in empty slots
+    for (; j < KEY_CODE_PER_REPORT; j++) {
+      reportBuffer[i].keycodes[j] = pressedKeys[curKeyId];
+      curKeyId++;
+      if (curKeyId >= keyNum) return;
     }
   }
 }
@@ -162,6 +199,9 @@ void setup() {
   // Initialize key scanning infrastructure
   initRows();
   initCols();
+  // Initialize report buffer
+  for (uint8_t i = 0; i < USB_CFG_HID_REPORT_ID_NUM; i++)
+    reportBuffer[i].reportId = i + 1;
   // USB protocol initialization
   cli();
   usbInit();
