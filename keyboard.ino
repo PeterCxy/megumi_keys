@@ -8,7 +8,7 @@ extern "C" {
 #include "usbdrv/oddebug.h"
 }
 
-#define KEY_CODE_PER_REPORT 4
+#define KEY_CODE_PER_REPORT 5
 #define CHECK_BIT(var, pos) ((var) & (1 << (pos)))
 
 typedef struct __attribute__((__packed__)) {
@@ -28,11 +28,11 @@ typedef struct __attribute__((__packed__)) {
   0x29, 0xe7,                    /*   USAGE_MAXIMUM (Keyboard Right GUI) */   \
   0x15, 0x00,                    /*   LOGICAL_MINIMUM (0) */                  \
   0x25, 0x01,                    /*   LOGICAL_MAXIMUM (1) */                  \
+  0x85, ID,                      /*   REPORT_ID (ID) */                       \
   0x75, 0x01,                    /*   REPORT_SIZE (1) */                      \
   0x95, 0x08,                    /*   REPORT_COUNT (8) */                     \
   0x81, 0x02,                    /*   INPUT (Data,Var,Abs) */                 \
-  0x85, ID,                      /*   REPORT_ID (ID) */                       \
-  0x95, BUFFER_SIZE - 1,         /*   REPORT_COUNT (simultaneous keys) */     \
+  0x95, BUFFER_SIZE - 2,         /*   REPORT_COUNT (simultaneous keys) */     \
   0x75, 0x08,                    /*   REPORT_SIZE (8) */                      \
   0x25, 0x65,                    /*   LOGICAL_MAXIMUM (101) */                \
   0x19, 0x00,                    /*   USAGE_MINIMUM (Reserved) */             \
