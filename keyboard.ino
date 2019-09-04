@@ -19,7 +19,7 @@ typedef struct __attribute__((__packed__)) {
 } kbReport;
 
 #define BUFFER_SIZE sizeof(kbReport)
-#define KEYBOARD_DESCRIPTOR(ID) \
+#define KEYBOARD_DESCRIPTOR(ID, LED) \
   0x05, 0x01,                    /* USAGE_PAGE (Generic Desktop) */           \
   0x09, 0x06,                    /* USAGE (Keyboard) */                       \
   0xa1, 0x01,                    /* COLLECTION (Application) */               \
@@ -32,27 +32,29 @@ typedef struct __attribute__((__packed__)) {
   0x95, 0x08,                    /*   REPORT_COUNT (8) */                     \
   0x81, 0x02,                    /*   INPUT (Data,Var,Abs) */                 \
   0x85, ID,                      /*   REPORT_ID (ID) */                       \
-  0x95, BUFFER_SIZE - 1,         /*   REPORT_COUNT (simultaneous keys) */     \
+  0x95, 0x05,                    /*   REPORT_COUNT (simultaneous keys) */     \
   0x75, 0x08,                    /*   REPORT_SIZE (8) */                      \
   0x25, 0x65,                    /*   LOGICAL_MAXIMUM (101) */                \
   0x19, 0x00,                    /*   USAGE_MINIMUM (Reserved) */             \
   0x29, 0x65,                    /*   USAGE_MAXIMUM (Keyboard Application) */ \
-  0x81, 0x00,                    /*   INPUT (Data,Ary,Abs) */                 \
+  0x81, 0x00                     /*   INPUT (Data,Ary,Abs) */                 \
+  LED,                                                                        \
+  0xc0                           /* END_COLLECTION */
+#define LED_DESCRIPTOR ,\
   0x95, 0x05,                    /*   REPORT_COUNT (5) */                     \
   0x75, 0x01,                    /*   REPORT_SIZE (1) */                      \
   0x05, 0x08,                    /*   USAGE_PAGE (LEDs) */                    \
   0x19, 0x01,                    /*   USAGE_MINIMUM (Num Lock) */             \
   0x29, 0x02,                    /*   USAGE_MAXIMUM (Caps Lock) */            \
-  0x91, 0x02,                    /*   OUTPUT (Data,Var,Abs) */                \
-  0x95, 0x01,                    /*   REPORT_COUNT (1) */                     \
-  0x75, 0x03,                    /*   REPORT_SIZE (3) */                      \
-  0x91, 0x03,                    /*   OUTPUT (Cnst,Var,Abs) */                \
-  0xc0                           /* END_COLLECTION */
+  0x91, 0x02                     /*   OUTPUT (Data,Var,Abs) */
 
 PROGMEM const char usbHidReportDescriptor[USB_CFG_HID_REPORT_DESCRIPTOR_LENGTH] = { /* USB report descriptor */
-  KEYBOARD_DESCRIPTOR(1),
-  KEYBOARD_DESCRIPTOR(2),
-  KEYBOARD_DESCRIPTOR(3),
+  KEYBOARD_DESCRIPTOR(1, LED_DESCRIPTOR),
+  KEYBOARD_DESCRIPTOR(2,),
+  KEYBOARD_DESCRIPTOR(3,),
+  KEYBOARD_DESCRIPTOR(4,),
+  KEYBOARD_DESCRIPTOR(5,),
+  KEYBOARD_DESCRIPTOR(6,),
 };
 
 static kbReport reportBuffer[USB_CFG_HID_REPORT_ID_NUM] = { { 0 } };
